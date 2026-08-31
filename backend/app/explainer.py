@@ -47,9 +47,9 @@ class Explainer:
             f"Top contributing factors from the ML model: {feature_summary}. "
             "Write ONE short, plain-language sentence (under 25 words) explaining "
             "why this transaction was flagged, suitable for a merchant dashboard. "
+            "All amounts are in Indian Rupees — always use the ₹ symbol, never $. "
             "No preamble, just the sentence."
         )
-
         try:
             response = _groq_client.chat.completions.create(
                 model="openai/gpt-oss-20b",
