@@ -46,6 +46,7 @@ def main():
     joblib.dump(model, "data/risk_model.joblib")
     joblib.dump(scaler, "data/risk_scaler.joblib")
     joblib.dump(list(X.columns), "data/risk_model_features.joblib")
+    joblib.dump(X_scaled[:150], "data/risk_background.joblib")
     print(f"Trained on {len(X)} transactions. Model + scaler saved to data/")
 
     scores = model.decision_function(X_scaled)

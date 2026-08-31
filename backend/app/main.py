@@ -1,20 +1,25 @@
 """
 Trust & Risk Sentinel — API entrypoint.
 
-Blends the deterministic rule engine (primary, explainable, always
-authoritative for hard violations) with the ML anomaly scorer
-(secondary signal for statistically unusual behavior rules don't
-explicitly check for).
+Pipeline per transaction:
+1. Rule engine evaluates (authoritative for hard violations)
+2. ML scorer adds an anomaly signal rules alone would miss
+3. Explainer turns the combined signal into a plain-language reason
+4. Audit log writes an immutable record of the full decision
+5. If approved, a real Razorpay test-mode order is created
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
+import joblib
 
 from app.rule_engine import RuleEngine, Transaction, Decision
 from app.razorpay_client import create_test_order
 from app.ml_risk_scorer import MLRiskScorer
+from app.explainer import Explainer
+from app.audit_log import log_decision, get_recent_logs
 
 app = FastAPI(title="Trust & Risk Sentinel")
 
@@ -27,6 +32,13 @@ app.add_middleware(
 
 engine = RuleEngine()
 ml_scorer = MLRiskScorer()
+
+background_X = joblib.load("data/risk_background.joblib")
+explainer = Explainer(
+    model=ml_scorer.model,
+    feature_names=ml_scorer.feature_names,
+    background_X_scaled=background_X,
+)
 
 ML_ESCALATION_THRESHOLD = 65
 ML_HOLD_THRESHOLD = 45
@@ -43,10 +55,12 @@ class TransactionRequest(BaseModel):
 class ScreenResponse(BaseModel):
     decision: str
     reasons: list[str]
+    explanation: str
     rule_risk_score: int
     ml_risk_score: float
     combined_risk_score: float
     razorpay_order_id: str | None = None
+    audit_log_id: int
     timestamp: str
 
 
@@ -61,7 +75,7 @@ def screen_transaction(req: TransactionRequest):
     )
 
     rule_result = engine.evaluate(txn)
-    ml_score = ml_scorer.score(
+    ml_score, X_raw, X_scaled = ml_scorer.score_with_features(
         agent_id=req.agent_id,
         amount=req.amount,
         timestamp=txn.timestamp,
@@ -79,6 +93,9 @@ def screen_transaction(req: TransactionRequest):
         decision = Decision.ESCALATE
         reasons.append(f"ML anomaly score ({ml_score}) compounds existing rule violation")
 
+    contributions = explainer.explain(X_raw[0], X_scaled)
+    explanation = explainer.to_plain_language(decision.value, reasons, contributions, ml_score)
+
     razorpay_order_id = None
     if decision == Decision.APPROVE:
         order = create_test_order(
@@ -87,15 +104,34 @@ def screen_transaction(req: TransactionRequest):
         )
         razorpay_order_id = order["id"]
 
+    audit_id = log_decision(
+        agent_id=req.agent_id,
+        merchant_id=req.merchant_id,
+        amount=req.amount,
+        decision=decision.value,
+        rule_risk_score=rule_result.rule_risk_score,
+        ml_risk_score=float(ml_score),
+        combined_risk_score=float(combined),
+        explanation=explanation,
+        razorpay_order_id=razorpay_order_id,
+    )
+
     return ScreenResponse(
         decision=decision.value,
         reasons=reasons,
+        explanation=explanation,
         rule_risk_score=rule_result.rule_risk_score,
         ml_risk_score=ml_score,
         combined_risk_score=combined,
         razorpay_order_id=razorpay_order_id,
+        audit_log_id=audit_id,
         timestamp=txn.timestamp.isoformat(),
     )
+
+
+@app.get("/audit-log")
+def audit_log(limit: int = 50):
+    return get_recent_logs(limit)
 
 
 @app.get("/health")

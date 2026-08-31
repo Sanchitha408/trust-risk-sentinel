@@ -35,7 +35,7 @@ class MLRiskScorer:
         }
         return [[row[name] for name in self.feature_names]]
 
-    def score(self, agent_id: str, amount: float, timestamp: datetime, agent_verified: bool) -> float:
+    def score_with_features(self, agent_id: str, amount: float, timestamp: datetime, agent_verified: bool):
         X = self._features_for(agent_id, amount, timestamp, agent_verified)
         X_scaled = self.scaler.transform(X)
         raw = self.model.decision_function(X_scaled)[0]
@@ -43,4 +43,9 @@ class MLRiskScorer:
         self.agent_amounts[agent_id].append(amount)
 
         risk = (self._score_max - raw) / (self._score_max - self._score_min) * 100
-        return round(max(0.0, min(100.0, risk)), 1)
+        risk = round(max(0.0, min(100.0, risk)), 1)
+        return risk, X, X_scaled
+
+    def score(self, agent_id: str, amount: float, timestamp: datetime, agent_verified: bool) -> float:
+        risk, _, _ = self.score_with_features(agent_id, amount, timestamp, agent_verified)
+        return risk
