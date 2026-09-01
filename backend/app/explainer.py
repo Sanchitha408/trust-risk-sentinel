@@ -40,13 +40,24 @@ class Explainer:
         if not _groq_client:
             return self._fallback(decision, rule_reasons, top_features, ml_risk_score)
 
+        if decision == "approve":
+            action_phrase = "was approved"
+            explain_phrase = "why it was approved with low risk"
+        elif decision == "hold":
+            action_phrase = "was held for manual review"
+            explain_phrase = "why it was held"
+        else:
+            action_phrase = "was escalated"
+            explain_phrase = "why it was escalated"
+
         prompt = (
-            f"A fraud-risk system flagged a transaction with decision '{decision}' "
-            f"and ML anomaly score {ml_risk_score}/100. "
+            f"A fraud-risk system evaluated a transaction and it {action_phrase}, "
+            f"with an ML anomaly score of {ml_risk_score}/100. "
             f"Rule-based flags: {rule_reasons or 'none'}. "
             f"Top contributing factors from the ML model: {feature_summary}. "
-            "Write ONE short, plain-language sentence (under 25 words) explaining "
-            "why this transaction was flagged, suitable for a merchant dashboard. "
+            f"Write ONE short, plain-language sentence (under 25 words) explaining "
+            f"{explain_phrase}, suitable for a merchant dashboard. "
+            "Do not say the transaction was 'flagged' unless the decision is hold or escalate. "
             "All amounts are in Indian Rupees — always use the ₹ symbol, never $. "
             "No preamble, just the sentence."
         )
