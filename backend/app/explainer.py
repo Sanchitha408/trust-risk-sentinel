@@ -42,7 +42,8 @@ class Explainer:
 
         if decision == "approve":
             action_phrase = "was approved"
-            explain_phrase = "why it was approved with low risk"
+            explain_phrase = "why it was approved despite a moderate anomaly score, framing it as low-risk overall, never as 'flagged'"
+
         elif decision == "hold":
             action_phrase = "was held for manual review"
             explain_phrase = "why it was held"
