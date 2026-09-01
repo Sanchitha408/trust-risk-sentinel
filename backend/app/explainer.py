@@ -54,13 +54,16 @@ class Explainer:
             response = _groq_client.chat.completions.create(
                 model="openai/gpt-oss-20b",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=300,
+                max_tokens=500,
                 temperature=0.3,
+                reasoning_effort="low",
             )
-            return response.choices[0].message.content.strip()
+            content = response.choices[0].message.content.strip()
+            if not content:
+                return self._fallback(decision, rule_reasons, top_features, ml_risk_score)
+            return content
         except Exception:
             return self._fallback(decision, rule_reasons, top_features, ml_risk_score)
-
     def _fallback(self, decision, rule_reasons, top_features, ml_risk_score) -> str:
         if rule_reasons:
             return f"{decision.capitalize()}: {rule_reasons[0]}"
