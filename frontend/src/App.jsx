@@ -497,6 +497,7 @@ export default function App() {
 
       <footer className="footer">
         <p>Trust &amp; Risk Sentinel — built for Razorpay Buildathon, Open Innovation Track.</p>
+        <p className="footer-contact">Contact: trustrisksentinel26@gmail.com</p>
       </footer>
     </div>
   );

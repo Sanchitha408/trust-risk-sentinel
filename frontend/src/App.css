@@ -594,3 +594,9 @@ body {
   color: #a5b4fc;
   font-weight: 600;
 }
+
+.footer-contact {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 12px;
+}
