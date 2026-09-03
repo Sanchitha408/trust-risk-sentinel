@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { screenTransaction, getAuditLog } from "./api";
+import { screenTransaction, getAuditLog, registerIdentity, getIdentities } from "./api";
 import "./App.css";
 
 const DECISION_COLORS = {
@@ -59,6 +59,16 @@ function Reveal({ children, className = "", delay = 0 }) {
 function scrollTo(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 }
+
+function decodeJwt(token) {
+  try {
+    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+}
+
 function Bubbles() {
   const bubbles = [
     { size: 60, left: "6%", duration: 18, delay: 0, color: "rgba(99, 102, 241, 0.18)" },
@@ -93,14 +103,6 @@ function Bubbles() {
       ))}
     </div>
   );
-}
-function decodeJwt(token) {
-  try {
-    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(base64));
-  } catch {
-    return null;
-  }
 }
 
 function LiveStatsPanel({ logs, active }) {
@@ -163,6 +165,7 @@ function LiveStatsPanel({ logs, active }) {
     </div>
   );
 }
+
 export default function App() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -181,6 +184,12 @@ export default function App() {
     agent_verified: true,
   });
 
+  const [identities, setIdentities] = useState([]);
+  const [regRole, setRegRole] = useState("merchant");
+  const [regName, setRegName] = useState("");
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError, setRegError] = useState(null);
+
   const refreshLogs = useCallback(async () => {
     try {
       const data = await getAuditLog(50);
@@ -196,6 +205,16 @@ export default function App() {
     const interval = setInterval(refreshLogs, 4000);
     return () => clearInterval(interval);
   }, [refreshLogs]);
+
+  useEffect(() => {
+    if (!user) {
+      setIdentities([]);
+      return;
+    }
+    getIdentities(user.email)
+      .then(setIdentities)
+      .catch(() => setIdentities([]));
+  }, [user]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -276,6 +295,31 @@ export default function App() {
     }
   }
 
+  async function handleRegister(e) {
+    e.preventDefault();
+    if (!regName.trim()) return;
+    setRegLoading(true);
+    setRegError(null);
+    try {
+      const identity = await registerIdentity({
+        google_email: user.email,
+        role: regRole,
+        display_name: regName.trim(),
+      });
+      setIdentities((prev) => [identity, ...prev]);
+      setRegName("");
+      if (regRole === "merchant") {
+        setForm((f) => ({ ...f, merchant_id: identity.identity_id }));
+      } else {
+        setForm((f) => ({ ...f, agent_id: identity.identity_id }));
+      }
+    } catch (err) {
+      setRegError("Registration failed. Please try again.");
+    } finally {
+      setRegLoading(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
@@ -296,8 +340,8 @@ export default function App() {
 
   return (
     <div className="app">
-        <Bubbles />
-        <nav className={`navbar ${scrolled ? "navbar-scrolled" : ""}`}>
+      <Bubbles />
+      <nav className={`navbar ${scrolled ? "navbar-scrolled" : ""}`}>
         <span className="brand">Trust &amp; Risk Sentinel</span>
         <div className="nav-right">
           <div className="nav-links">
@@ -316,6 +360,7 @@ export default function App() {
       </nav>
 
       <LiveStatsPanel logs={logs} active={activeSection} />
+
       <section id="hero" className="hero">
         <div className="hero-glow" />
         <div className="hero-content">
@@ -392,6 +437,63 @@ export default function App() {
           <h2>Live demo</h2>
           <p>Fire a real transaction below and watch it get screened in real time.</p>
         </Reveal>
+
+        {user && (
+          <Reveal>
+            <div className="panel">
+              <h3>Register a Merchant or Agent Identity</h3>
+              <p className="panel-subtext">
+                Registered identities are tied to your Google account ({user.email}) and can be used below.
+              </p>
+              <form className="txn-form" onSubmit={handleRegister}>
+                <label>
+                  Role
+                  <select value={regRole} onChange={(e) => setRegRole(e.target.value)}>
+                    <option value="merchant">Merchant</option>
+                    <option value="agent">Agent</option>
+                  </select>
+                </label>
+                <label>
+                  Display Name
+                  <input
+                    value={regName}
+                    onChange={(e) => setRegName(e.target.value)}
+                    placeholder="e.g. Flipkart Store, Grocery Bot"
+                  />
+                </label>
+                <button className="primary-btn" type="submit" disabled={regLoading}>
+                  {regLoading ? "Registering..." : "Register"}
+                </button>
+              </form>
+              {regError && <div className="error-banner">{regError}</div>}
+
+              {identities.length > 0 && (
+                <div className="identity-list">
+                  {identities.map((idn) => (
+                    <div key={idn.id} className="identity-chip">
+                      <span className={`identity-role role-${idn.role}`}>{idn.role}</span>
+                      <span className="identity-name">{idn.display_name}</span>
+                      <code className="identity-id">{idn.identity_id}</code>
+                      <button
+                        type="button"
+                        className="ghost-btn identity-use-btn"
+                        onClick={() =>
+                          setForm((f) =>
+                            idn.role === "merchant"
+                              ? { ...f, merchant_id: idn.identity_id }
+                              : { ...f, agent_id: idn.identity_id }
+                          )
+                        }
+                      >
+                        Use
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Reveal>
+        )}
 
         <Reveal>
           <div className="panel">
@@ -496,9 +598,9 @@ export default function App() {
       </section>
 
       <footer className="footer">
+        <p>Trust &amp; Risk Sentinel — built for Razorpay Buildathon, Open Innovation Track.</p>
         <p className="footer-contact">Contact: trustrisksentinel26@gmail.com</p>
       </footer>
     </div>
   );
 }
-

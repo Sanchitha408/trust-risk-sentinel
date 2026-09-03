@@ -20,6 +20,7 @@ from app.razorpay_client import create_test_order
 from app.ml_risk_scorer import MLRiskScorer
 from app.explainer import Explainer
 from app.audit_log import log_decision, get_recent_logs
+from app.identity_registry import register_identity, list_identities
 
 app = FastAPI(title="Trust & Risk Sentinel")
 
@@ -132,7 +133,20 @@ def screen_transaction(req: TransactionRequest):
 @app.get("/audit-log")
 def audit_log(limit: int = 50):
     return get_recent_logs(limit)
+class RegisterIdentityRequest(BaseModel):
+    google_email: str
+    role: str
+    display_name: str
 
+
+@app.post("/register-identity")
+def register_identity_endpoint(req: RegisterIdentityRequest):
+    return register_identity(req.google_email, req.role, req.display_name)
+
+
+@app.get("/identities")
+def get_identities(email: str):
+    return list_identities(email)
 
 @app.get("/health")
 def health():

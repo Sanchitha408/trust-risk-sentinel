@@ -16,3 +16,13 @@ export async function getAuditLog(limit = 50) {
   const res = await api.get(`/audit-log?limit=${limit}`);
   return res.data;
 }
+
+export async function registerIdentity(payload) {
+  const res = await api.post("/register-identity", payload);
+  return res.data;
+}
+
+export async function getIdentities(email) {
+  const res = await api.get(`/identities?email=${encodeURIComponent(email)}`);
+  return res.data;
+}
